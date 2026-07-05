@@ -2,7 +2,7 @@
     "name": "parallax-microshield",
     "version": "0.1.0",
     "description": "Zero-trust physical security and vibe-guard for AI Agents.",
-    "author": "Kayla",
+    "author": "Vibe Coder",
     "capabilities": {
         "skills": [
             "parallax_vibe_guard"

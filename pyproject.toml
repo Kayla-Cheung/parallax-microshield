@@ -7,7 +7,7 @@ name = "pyparallax"
 version = "0.2.0"
 description = "A lightweight, zero-trust Tier 0 Shield gateway for AI Agents."
 authors = [
-    { name = "Kayla", email = "kayla@example.com" }
+    { name = "Vibe Coder", email = "vibe@example.com" }
 ]
 dependencies = [
     "pydantic>=2.0.0"
