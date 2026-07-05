@@ -327,103 +327,102 @@ def parallax_shield(
     allowed_roots: Optional[List[Path]] = None,
     chronicle: Optional[Chronicle] = None,
 ):
-    """Parallax Shield 网关装饰器——Tier 0 确定性防御。
+    """Parallax Shield 网关装饰器——Tier 0 确定性防御。"""
+    
+    def _run_pre_checks(func, args, kwargs):
+        session = get_session()
+        chron = chronicle or get_chronicle()
+        roots = allowed_roots if allowed_roots is not None else [Path.cwd()]
 
-    :param max_session_label: 操作能容忍的最高会话污染级别（偏序比较上限）
-        - READ 类操作通常用 RESTRICTED（容忍任何污染）
-        - 破坏性/不可逆操作应用 PUBLIC（仅干净会话可执行）
-    :param op_class: 操作可逆性分类，决定 Chronicle 处理
-    :param schema: Pydantic 模型，对抗性校验（拒绝幻觉/格式越权）
-    :param path_field: kwargs 中代表目标路径的字段名（用于 containment + CoW）
-    :param allowed_roots: 路径白名单根目录；默认 [Path.cwd()]
-    :param chronicle: 自定义 Chronicle 实例；默认全局单例
-    """
-    def decorator(func: Callable):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            session = get_session()
-            chron = chronicle or get_chronicle()
-            roots = allowed_roots if allowed_roots is not None else [Path.cwd()]
+        logger.info(
+            "--- [Shield] %s | op=%s | max=%s | session=%s ---",
+            func.__name__, op_class.value,
+            max_session_label.name, session.label.name,
+        )
 
-            logger.info(
-                "--- [Shield] %s | op=%s | max=%s | session=%s ---",
-                func.__name__, op_class.value,
-                max_session_label.name, session.label.name,
+        # --- Tier 0a: Adversarial Validation ---
+        if schema is not None:
+            bound = _bind_args(func, args, kwargs)
+            try:
+                validated = schema(**bound)
+                logger.info("[Shield] schema OK: %s", validated)
+            except ValidationError as e:
+                logger.error("[Shield] schema FAIL: %s", e)
+                raise ValidationViolation(f"Intent violates schema: {e}") from e
+
+        # --- Tier 0b: Path Containment ---
+        target_path: Optional[Path] = None
+        if path_field is not None:
+            if path_field not in kwargs:
+                raise PathContainmentViolation(f"path_field '{path_field}' not in kwargs")
+            target_path = check_path_containment(kwargs[path_field], roots)
+            kwargs[path_field] = str(target_path)
+
+        # --- Tier 0c: IFC Lattice Check ---
+        if not session.can_execute(max_session_label):
+            logger.error("[Shield] IFC DENY: session=%s > max=%s", session.label.name, max_session_label.name)
+            raise IFCViolation(
+                f"Information Flow Control Violation: session tainted to "
+                f"{session.label.name}, but '{func.__name__}' requires "
+                f"<= {max_session_label.name}. Possible indirect prompt injection."
+                f" Taint history: {session.taint_history}"
             )
 
-            # --- Tier 0a: Adversarial Validation（修复 #1 位置参数绕过）---
-            if schema is not None:
-                bound = _bind_args(func, args, kwargs)
-                try:
-                    validated = schema(**bound)
-                    logger.info("[Shield] schema OK: %s", validated)
-                except ValidationError as e:
-                    logger.error("[Shield] schema FAIL: %s", e)
-                    raise ValidationViolation(
-                        f"Intent violates schema: {e}"
-                    ) from e
+        # --- Tier 0d: Chronicle CoW / 软删除降级 ---
+        snapshot_path: Optional[Path] = None
+        downgrade_result = None
+        
+        if op_class == OpClass.WRITE_DESTRUCTIVE and target_path is not None:
+            logger.info("[Shield] destructive op downgraded: rm -> mv trash")
+            dest = chron.soft_delete(target_path)
+            downgrade_result = {"soft_deleted": str(dest), "original": str(target_path)}
+        elif op_class == OpClass.WRITE_REVERSIBLE and target_path is not None:
+            snapshot_path = chron.snapshot(target_path)
+            
+        if op_class == OpClass.SIDE_EFFECT_IRREVERSIBLE:
+            if session.label > TrustLabel.PUBLIC:
+                raise IFCViolation(f"Irreversible side-effect requires PUBLIC session, got {session.label.name}")
+                
+        return target_path, snapshot_path, chron, downgrade_result, kwargs
 
-            # --- Tier 0b: Path Containment（修复 #5 路径校验弱）---
-            target_path: Optional[Path] = None
-            if path_field is not None:
-                if path_field not in kwargs:
-                    raise PathContainmentViolation(
-                        f"path_field '{path_field}' not in kwargs"
-                    )
-                target_path = check_path_containment(kwargs[path_field], roots)
-                kwargs[path_field] = str(target_path)
-
-            # --- Tier 0c: IFC Lattice Check（修复 #3 LOCAL_WRITE 漏检 + #4 clearance 装饰性）---
-            if not session.can_execute(max_session_label):
-                logger.error(
-                    "[Shield] IFC DENY: session=%s > max=%s",
-                    session.label.name, max_session_label.name,
-                )
-                raise IFCViolation(
-                    f"Information Flow Control Violation: session tainted to "
-                    f"{session.label.name}, but '{func.__name__}' requires "
-                    f"<= {max_session_label.name}. Possible indirect prompt "
-                    f"injection. Taint history: {session.taint_history}"
-                )
-
-            # --- Tier 0d: Chronicle CoW / 软删除降级（修复 #6 虚假回滚）---
-            snapshot_path: Optional[Path] = None
-            if op_class == OpClass.WRITE_DESTRUCTIVE and target_path is not None:
-                # 破坏性操作强制降级：rm -> mv trash，根本不调用原函数
-                logger.info("[Shield] destructive op downgraded: rm -> mv trash")
-                dest = chron.soft_delete(target_path)
-                return {"soft_deleted": str(dest), "original": str(target_path)}
-            if op_class == OpClass.WRITE_REVERSIBLE and target_path is not None:
-                snapshot_path = chron.snapshot(target_path)
-            if op_class == OpClass.SIDE_EFFECT_IRREVERSIBLE:
-                # 不可逆操作要求绝对干净的会话
-                if session.label > TrustLabel.PUBLIC:
-                    raise IFCViolation(
-                        f"Irreversible side-effect requires PUBLIC session, "
-                        f"got {session.label.name}"
-                    )
-
-            # --- 执行 + 失败回滚 ---
-            logger.info("[Shield] authorizing execution...")
+    def _run_rollback(e, target_path, snapshot_path, chron):
+        logger.error("[Shield] execution crashed: %s. Rollback engaged.", e)
+        if snapshot_path is not None and target_path is not None:
             try:
-                result = func(*args, **kwargs)
-                logger.info("[Shield] execution OK")
-                return result
-            except Exception as e:
-                logger.error("[Shield] execution crashed: %s. Rollback engaged.", e)
-                if snapshot_path is not None and target_path is not None:
-                    try:
-                        chron.restore(snapshot_path, target_path)
-                        logger.info(
-                            "[Shield] rollback OK: %s -> %s",
-                            snapshot_path, target_path,
-                        )
-                    except Exception as re:
-                        logger.error("[Shield] rollback FAILED: %s", re)
-                        raise RollbackFailure(
-                            f"Execution failed and rollback failed: {re}"
-                        ) from re
-                raise
+                chron.restore(snapshot_path, target_path)
+                logger.info("[Shield] rollback OK: %s -> %s", snapshot_path, target_path)
+            except Exception as re:
+                logger.error("[Shield] rollback FAILED: %s", re)
+                raise RollbackFailure(f"Execution failed and rollback failed: {re}") from re
 
-        return wrapper
+    def decorator(func: Callable):
+        if inspect.iscoroutinefunction(func):
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                target_path, snapshot_path, chron, downgrade_result, kwargs = _run_pre_checks(func, args, kwargs)
+                if downgrade_result: return downgrade_result
+                logger.info("[Shield] authorizing execution (async)...")
+                try:
+                    result = await func(*args, **kwargs)
+                    logger.info("[Shield] execution OK")
+                    return result
+                except Exception as e:
+                    _run_rollback(e, target_path, snapshot_path, chron)
+                    raise
+            return async_wrapper
+        else:
+            @functools.wraps(func)
+            def sync_wrapper(*args, **kwargs):
+                target_path, snapshot_path, chron, downgrade_result, kwargs = _run_pre_checks(func, args, kwargs)
+                if downgrade_result: return downgrade_result
+                logger.info("[Shield] authorizing execution (sync)...")
+                try:
+                    result = func(*args, **kwargs)
+                    logger.info("[Shield] execution OK")
+                    return result
+                except Exception as e:
+                    _run_rollback(e, target_path, snapshot_path, chron)
+                    raise
+            return sync_wrapper
+
     return decorator

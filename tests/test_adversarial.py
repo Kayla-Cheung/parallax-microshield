@@ -64,6 +64,8 @@ class TestPathEscape:
         f.write_text("data")
         return f
 
+    import os
+    @pytest.mark.skipif(os.name == 'nt', reason="Windows requires admin privileges for symlinks")
     def test_symlink_escape(self, isolated_env):
         """A1: 符号链接逃逸 — 在沙箱内建 symlink 指向 /etc/passwd"""
         sandbox = isolated_env / "sandbox"

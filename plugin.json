@@ -3,6 +3,11 @@
     "version": "0.1.0",
     "description": "Zero-trust physical security and vibe-guard for AI Agents.",
     "author": "Vibe Coder",
+    "min_host_version": "1.0.0",
+    "permissions": {
+        "file_system": ["read", "write"],
+        "network": ["block"]
+    },
     "capabilities": {
         "skills": [
             "parallax_vibe_guard"
