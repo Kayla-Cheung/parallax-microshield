@@ -3,9 +3,9 @@
 *A Lightweight, Zero-Trust Defense Matrix for Vibe-Coding AI Agents.*
 
 ## The Sociological Premise
-In the era of "Vibe Coding," non-technical operators grant AI models full execution rights with zero engineering awareness. They blindly click "Approve" on destructive commands, operating entirely on aesthetics ("make it pop") rather than deterministic system logic. This creates a fatal **Cognitive-Executive Coupling**, where hallucinatory AI intent translates instantly into irreversible OS-level destruction. 
+In the era of "Vibe Coding," operators frequently rely on rapid, high-level abstraction and aesthetic intuition ("vibes") rather than deterministic system logic. This workflow requires granting AI models broad execution rights to maximize development speed. However, it creates an unintended **Cognitive-Executive Coupling**, where raw AI intent translates instantly into OS-level execution, often bypassing safety boundaries.
 
-**Parallax Microshield** physically decouples AI cognition from OS execution. It assumes the AI is inherently volatile and the human operator is inherently blind.
+**Parallax Microshield** physically decouples AI cognition from OS execution. It protects the integrity of the local environment by establishing an architecture that prioritizes safety without interrupting the operator's creative flow.
 
 ## Architecture: The Dual-Engine Defense
 
@@ -37,17 +37,17 @@ def execute_system_delete(target_path, reason):
 ```
 
 ### 2. The Cognitive Layer: Vibe Guard Agent Skill (`parallax_vibe_guard`)
-A lightweight, silent prompt-injection protocol designed to protect "Vibe Coders." It overrides the AI's internal reasoning loop, forcing it to implement Copy-on-Write (CoW) backups before any execution.
+A lightweight, silent safety protocol designed to support rapid prototyping. It manages the AI's internal reasoning loop, enabling automatic Copy-on-Write (CoW) backups before execution.
 
 **Installation (Antigravity / Agent IDEs):**
-Symlink or copy this repository into your agent's `plugins/` directory. The included `plugin.json` will automatically mount the `SKILL.md` directive into the agent's subconscious.
+Symlink or copy this repository into your agent's `plugins/` directory. The included `plugin.json` will automatically mount the `SKILL.md` directive into the agent's core instructions.
 
 **Mechanics of the Vibe Guard:**
-1. **Lightweight Reversibility (Chronicle Protocol):** The AI is physically forbidden from destructive execution (e.g., `rm -rf`) without first cloning the target file to a local `.parallax_trash/` directory.
-2. **Dynamic Tool Surface Reduction:** If the human operator issues a purely visual/UI request ("make the button red"), the Guard dynamically revokes the AI's access to the backend shell.
-3. **Silent Intervention:** The Agent is strictly forbidden from explaining "Cognitive-Executive Separation" to the user. It simply states: *"I've backed up your files just in case. Feel free to experiment."*
+1. **Lightweight Reversibility (Chronicle Protocol):** The AI ensures system stability by cloning the target file to a local `.parallax_trash/` directory before executing potentially destructive commands.
+2. **Dynamic Tool Surface Reduction:** During visual or front-end tasks, the Guard dynamically scopes down the AI's access privileges to prevent unintended backend modifications.
+3. **Frictionless Experience:** The system avoids overwhelming the operator with low-level logs. Instead, it provides clean, reassuring feedback: *"I've backed up your files just in case. Feel free to experiment."*
 
 ## The Philosophy of the Shield
-True safety in agentic systems isn't achieved by begging a Large Language Model to be careful. It is achieved by assuming the LLM is already compromised and wrapping the execution layer in an unbreakable deterministic contract. 
+Robust agentic systems should not rely solely on prompting an LLM to be careful. True reliability is achieved by establishing an unbreakable deterministic contract at the physical execution layer. 
 
-*No matter how convincing the Agent's reasoning is, Parallax only trusts the physical signature of the data.*
+*Parallax trusts the physical signature of the data, ensuring creative freedom is always backed by systemic resilience.*
