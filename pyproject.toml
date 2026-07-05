@@ -17,3 +17,6 @@ requires-python = ">=3.9"
 
 [project.optional-dependencies]
 dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["pyparallax"]
