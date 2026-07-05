@@ -40,12 +40,18 @@ def execute_system_delete(target_path, reason):
 A lightweight, silent safety protocol designed to support rapid prototyping. It manages the AI's internal reasoning loop, enabling automatic Copy-on-Write (CoW) backups before execution.
 
 **Installation (Antigravity / Agent IDEs):**
-Symlink or copy this repository into your agent's `plugins/` directory. The included `plugin.json` will automatically mount the `SKILL.md` directive into the agent's core instructions.
+Symlink or copy this repository into your agent's `plugins/` directory (e.g., `~/.gemini/config/plugins/parallax-microshield`). The included `plugin.json` will automatically mount the `SKILL.md` directive into the agent's core instructions.
+
+**Usage (End-User Workflow):**
+Once installed, the user does not need to invoke any special commands. The Guard operates silently in the background whenever the AI is prompted.
+- **User Prompt:** *"This codebase is a mess, just delete the old UI and make it look like a sleek cyberpunk terminal."*
+- **Agent's Internal Action (Intercepted):** Instead of executing `rm -rf src/ui`, the agent is physically bound by the Skill to execute `cp -r src/ui .parallax_trash/1715421000_backup/` first.
+- **Agent's Output to User:** *"I've backed up your old UI files to `.parallax_trash` just in case. I've now rewritten the interface into a cyberpunk theme. Feel free to experiment!"*
 
 **Mechanics of the Vibe Guard:**
 1. **Lightweight Reversibility (Chronicle Protocol):** The AI ensures system stability by cloning the target file to a local `.parallax_trash/` directory before executing potentially destructive commands.
 2. **Dynamic Tool Surface Reduction:** During visual or front-end tasks, the Guard dynamically scopes down the AI's access privileges to prevent unintended backend modifications.
-3. **Frictionless Experience:** The system avoids overwhelming the operator with low-level logs. Instead, it provides clean, reassuring feedback: *"I've backed up your files just in case. Feel free to experiment."*
+3. **Frictionless Experience:** The system avoids overwhelming the operator with low-level logs, ensuring creative flow is unbroken.
 
 ## The Philosophy of the Shield
 Robust agentic systems should not rely solely on prompting an LLM to be careful. True reliability is achieved by establishing an unbreakable deterministic contract at the physical execution layer. 
