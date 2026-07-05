@@ -19,7 +19,7 @@ requires-python = ">=3.9"
 dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
 
 [project.scripts]
-parallax = "pyparallax.__init__:main"
+parallax = "pyparallax.cli:main"
 
 [tool.setuptools]
 packages = ["pyparallax"]
