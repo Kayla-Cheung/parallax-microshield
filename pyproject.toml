@@ -4,19 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyparallax"
-version = "0.1.0"
-description = "A lightweight, zero-trust security middleware for AI Agents."
+version = "0.2.0"
+description = "A lightweight, zero-trust Tier 0 Shield gateway for AI Agents."
 authors = [
     { name = "Kayla", email = "kayla@example.com" }
 ]
 dependencies = [
     "pydantic>=2.0.0"
 ]
-readme = "ROADMAP.md"
+readme = "README.md"
 requires-python = ">=3.9"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest>=7.0"]
 
 [tool.setuptools]
 packages = ["pyparallax"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

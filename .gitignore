@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.pytest_cache/
+
+# Parallax runtime artifacts (chronicle trash/snapshots/audit)
+.parallax/
+
+# Demo scratch files
+demo_cache.log
+keys.pem
+
+# Virtual envs
+.venv/
+venv/
+env/
