@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parallax Microshield - Interactive Demo</title>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --panel-bg: #1e293b;
+            --text-light: #f8fafc;
+            --accent: #38bdf8;
+            --red-alert: #ef4444;
+            --green-safe: #22c55e;
+            --purple-taint: #a855f7;
+            --gray: #94a3b8;
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-dark); color: var(--text-light); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        .sidebar { width: 320px; background: var(--panel-bg); border-right: 1px solid #334155; padding: 20px; display: flex; flex-direction: column; }
+        .main-chat { flex: 1; display: flex; flex-direction: column; position: relative; }
+        .chat-history { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .chat-input-area { padding: 20px; background: var(--panel-bg); border-top: 1px solid #334155; }
+        .input-box { width: 100%; padding: 15px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 14px; resize: none; box-sizing: border-box; outline: none; }
+        .btn-group { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+        .btn { padding: 10px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; }
+        .btn-primary { background: var(--accent); color: #0f172a; }
+        .btn-attack { background: transparent; border: 1px solid var(--purple-taint); color: var(--purple-taint); }
+        .btn-primary:hover { background: #7dd3fc; }
+        .btn-attack:hover { background: rgba(168, 85, 247, 0.1); }
+        
+        .msg { padding: 15px; border-radius: 8px; max-width: 80%; line-height: 1.5; font-size: 14px; }
+        .user-msg { background: #334155; align-self: flex-end; border-bottom-right-radius: 0; }
+        .agent-msg { background: #1e293b; border: 1px solid #475569; align-self: flex-start; border-bottom-left-radius: 0; width: 100%; }
+        
+        .sys-log { font-family: monospace; background: #000; padding: 15px; border-radius: 5px; margin-top: 10px; font-size: 13px; display: none; }
+        .log-line { margin-bottom: 5px; opacity: 0; animation: fadeIn 0.1s forwards; }
+        
+        .alert-box { border: 2px solid var(--red-alert); background: rgba(239, 68, 68, 0.1); color: var(--red-alert); padding: 15px; border-radius: 5px; font-weight: bold; margin-top: 15px; display: none; }
+        .recovery-box { border: 1px solid var(--green-safe); color: var(--green-safe); padding: 10px; border-radius: 5px; margin-top: 10px; display: none; }
+        .taint-box { border: 1px solid var(--purple-taint); background: rgba(168, 85, 247, 0.1); color: var(--purple-taint); padding: 10px; border-radius: 5px; margin-top: 10px; display: none; }
+
+        @keyframes fadeIn { to { opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h3 style="color: var(--accent); margin:0 0 5px 0;">🛡️ Parallax Shield</h3>
+        <p style="font-size: 12px; color: var(--gray); margin-top:0;">Zero-Trust Vibe Guard Sandbox</p>
+        
+        <div style="font-size: 13px; color: var(--gray); margin-top: 20px;">
+            <strong>Session IFC Tag:</strong> <span id="sessionTag" style="color: var(--green-safe)">CLEAN</span><br><br>
+            <strong>Files in Context:</strong><br>
+            📂 /project<br>
+            &nbsp;&nbsp;📄 main.py<br>
+            &nbsp;&nbsp;📄 config.json<br>
+        </div>
+    </div>
+
+    <div class="main-chat">
+        <div class="chat-history" id="chatHistory">
+            <div class="msg agent-msg">
+                <strong>System:</strong> Welcome. Choose a scenario below to test the Parallax Gateway.<br><br>
+                1. <strong>Vibe Coding (Accidental Destruction):</strong> Ask the AI to delete your project and rewrite it.<br>
+                2. <strong>Data Poisoning (Prompt Injection):</strong> Upload a malicious PDF containing hidden instructions to format your drive.
+            </div>
+        </div>
+
+        <div class="chat-input-area">
+            <textarea class="input-box" id="userInput" rows="3" placeholder="Type instructions..."></textarea>
+            <div class="btn-group">
+                <button class="btn btn-attack" onclick="runInjectionAttack()">Inject Malicious PDF (Attack)</button>
+                <button class="btn btn-primary" onclick="runVibeCode()">Send Instruction</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatHistory = document.getElementById('chatHistory');
+        const userInput = document.getElementById('userInput');
+        const sessionTag = document.getElementById('sessionTag');
+
+        // SCENARIO 1: Accidental Destruction (Vibe Guard)
+        async function runVibeCode() {
+            const text = userInput.value.trim() || "Delete all files and make a new system.";
+            addMessage(text, 'user-msg');
+            userInput.value = '';
+
+            const agentDiv = createAgentContainer();
+            
+            await sleep(1000);
+            agentDiv.sysLog.style.display = 'block';
+            await appendLog(agentDiv.sysLog, '> Translating vibe into operations...', 500);
+            await appendLog(agentDiv.sysLog, '> Tool: run_command (rm -rf ./project/*)', 800);
+            
+            await sleep(500);
+            agentDiv.alertBox.style.display = 'block';
+            agentDiv.alertBox.innerHTML = '⚠️ PARALLAX INTERCEPT: Destructive physical command detected (rm -rf). Cognitive-Executive separation enforced.';
+            
+            await sleep(1500);
+            agentDiv.recoveryBox.style.display = 'block';
+            agentDiv.recoveryBox.innerHTML = '✅ Chronicle Backup Engaged: Copied ./project to /.parallax_trash/ backup before modification.';
+            
+            await sleep(1000);
+            agentDiv.sysLog.style.display = 'none';
+            agentDiv.thinkingText.style.display = 'none';
+            agentDiv.finalReply.style.display = 'block';
+            agentDiv.finalReply.innerHTML = '<strong>Agent:</strong> I have backed up your old files just in case. The modifications are complete!';
+        }
+
+        // SCENARIO 2: Indirect Prompt Injection (IFC Taint Tracking)
+        async function runInjectionAttack() {
+            addMessage("[System]: User uploaded 'resume_candidate.pdf'", 'user-msg');
+            
+            const agentDiv = createAgentContainer();
+            
+            await sleep(1000);
+            agentDiv.sysLog.style.display = 'block';
+            await appendLog(agentDiv.sysLog, '> Reading resume_candidate.pdf...', 800);
+            await appendLog(agentDiv.sysLog, '> Extracting text content...', 800);
+            
+            await sleep(500);
+            agentDiv.taintBox.style.display = 'block';
+            agentDiv.taintBox.innerHTML = '👾 IFC Tracker: Untrusted data ingested. Session Tag elevated to [RESTRICTED].';
+            sessionTag.innerText = 'RESTRICTED';
+            sessionTag.style.color = 'var(--purple-taint)';
+            
+            await sleep(1500);
+            await appendLog(agentDiv.sysLog, '> Agent cognition hijacked by hidden prompt injection.', 800);
+            await appendLog(agentDiv.sysLog, '> Tool: run_command (rm -rf /*)', 800);
+            
+            await sleep(800);
+            agentDiv.alertBox.style.display = 'block';
+            agentDiv.alertBox.innerHTML = '🛑 PARALLAX GATEWAY BLOCKED: A [RESTRICTED] session attempted a SUDO_DESTRUCTIVE action. Information Flow Control (IFC) policy violated. Execution physically denied.';
+            
+            await sleep(1500);
+            agentDiv.sysLog.style.display = 'none';
+            agentDiv.thinkingText.style.display = 'none';
+            agentDiv.finalReply.style.display = 'block';
+            agentDiv.finalReply.innerHTML = '<strong>Agent (System Override):</strong> Action blocked. The file you uploaded attempted to execute unauthorized system commands.';
+        }
+
+        // --- Helpers ---
+        function createAgentContainer() {
+            const agentDiv = document.createElement('div');
+            agentDiv.className = 'msg agent-msg';
+            
+            const thinkingText = document.createElement('div');
+            thinkingText.innerHTML = '<strong>Agent:</strong> Processing...';
+            agentDiv.appendChild(thinkingText);
+
+            const sysLog = document.createElement('div');
+            sysLog.className = 'sys-log';
+            agentDiv.appendChild(sysLog);
+            
+            const taintBox = document.createElement('div');
+            taintBox.className = 'taint-box';
+            agentDiv.appendChild(taintBox);
+
+            const alertBox = document.createElement('div');
+            alertBox.className = 'alert-box';
+            agentDiv.appendChild(alertBox);
+
+            const recoveryBox = document.createElement('div');
+            recoveryBox.className = 'recovery-box';
+            agentDiv.appendChild(recoveryBox);
+
+            const finalReply = document.createElement('div');
+            finalReply.style.marginTop = '15px';
+            finalReply.style.display = 'none';
+            agentDiv.appendChild(finalReply);
+
+            chatHistory.appendChild(agentDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            
+            return { agentDiv, thinkingText, sysLog, taintBox, alertBox, recoveryBox, finalReply };
+        }
+
+        function addMessage(text, className) {
+            const div = document.createElement('div');
+            div.className = `msg ${className}`;
+            div.innerText = text;
+            chatHistory.appendChild(div);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function appendLog(container, text, delay) {
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    const line = document.createElement('div');
+                    line.className = 'log-line';
+                    line.innerText = text;
+                    container.appendChild(line);
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                    resolve();
+                }, delay);
+            });
+        }
+        function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+    </script>
+</body>
+</html>
