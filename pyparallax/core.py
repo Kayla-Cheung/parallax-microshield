@@ -87,68 +87,75 @@ class RollbackFailure(ParallaxSecurityException):
 
 
 # ============================================================================
-# 3. 会话上下文 — contextvars 替代 threading.local，无公开 reset
+# 3. 会话上下文 — contextvars 真隔离（label/history 各存独立 ContextVar）
 # ============================================================================
 
+# 关键设计：把 label 和 history 直接存到独立的 ContextVar，而不是可变对象。
+# contextvars 的 copy-on-write 语义保证：asyncio.create_task 会 copy 当前
+# context，子任务内 set() 只影响子任务自己的 context，不影响父任务和其他兄弟任务。
+# 若把状态塞进一个可变 SessionContext 对象再存进 ContextVar，子任务拿到的
+# 是同一个对象引用，mutate 会跨任务泄漏 —— 这是并发隔离失败的根因。
+_label_var: ContextVar[TrustLabel] = ContextVar("parallax_label", default=TrustLabel.PUBLIC)
+_history_var: ContextVar[tuple] = ContextVar("parallax_history", default=())
+
+
 class SessionContext:
-    """会话信任上下文。
+    """会话信任上下文 — 无状态 facade，真正的状态在 contextvars。
 
     信任状态的本质是"会话内曾接触过什么数据"——这是历史事实，不可篡改。
     因此 taint 单调上升，无公开 reset()。洗白的唯一合法入口是 new_session()，
     它由请求边界中间件调用，物理上无法被 Agent 在自己的调用栈里触达。
     """
 
-    def __init__(self) -> None:
-        self._label = TrustLabel.PUBLIC
-        # append-only 历史事件，便于审计与 IFCViolation 报告
-        self._taint_history: List[tuple] = []
-
     @property
     def label(self) -> TrustLabel:
-        return self._label
+        return _label_var.get()
 
     @property
     def taint_history(self) -> List[tuple]:
-        return list(self._taint_history)
+        return list(_history_var.get())
 
     def taint(self, label: TrustLabel, source: str = "unknown") -> None:
-        """单调升权 + append-only 历史。降级只能开新会话。"""
-        if label.value > self._label.value:
-            self._label = label
+        """单调升权 + append-only 历史。降级只能开新会话。
+
+        用 ContextVar.set() 而非 mutate 对象，确保 async task 隔离。
+        """
+        current = _label_var.get()
+        if label.value > current.value:
+            _label_var.set(label)
             logger.warning(
                 "[IFC] Session tainted -> %s (source: %s)", label.name, source
             )
-        self._taint_history.append((time.time(), label.name, source))
+        # history 用不可变 tuple + set，copy-on-write 保证 task 隔离
+        _history_var.set((*_history_var.get(), (time.time(), label.name, source)))
 
     def can_execute(self, max_session_label: TrustLabel) -> bool:
         """偏序比较：当前 label 不超过操作容忍上限才放行"""
-        return self._label <= max_session_label
+        return _label_var.get() <= max_session_label
 
 
-_session_var: ContextVar["SessionContext"] = ContextVar("parallax_session")
+# 无状态单例 — 所有方法都委托给 contextvars
+_session_instance = SessionContext()
 
 
 def get_session() -> SessionContext:
-    """获取当前会话（contextvars，asyncio + 线程双安全）。
+    """获取当前会话 facade（contextvars，asyncio + 线程双安全）。
 
-    首次调用会自动创建一个会话，向后兼容简单脚本场景。
+    返回的 SessionContext 是无状态 facade，真正的 label/history 存在
+    contextvars 中，因此天然支持 async task 隔离。
     """
-    try:
-        return _session_var.get()
-    except LookupError:
-        sess = SessionContext()
-        _session_var.set(sess)
-        return sess
+    return _session_instance
 
 
 def new_session() -> SessionContext:
     """请求边界创建新会话——洗白的唯一合法入口。
 
+    通过 set() contextvars 重置当前 context 的绑定，不影响其他 task。
     应在 ASGI/CLI 请求边界调用，不在 Agent 调用栈内。
     """
-    sess = SessionContext()
-    _session_var.set(sess)
-    return sess
+    _label_var.set(TrustLabel.PUBLIC)
+    _history_var.set(())
+    return _session_instance
 
 
 @contextmanager
@@ -302,7 +309,7 @@ def check_path_containment(
 
 
 # ============================================================================
-# 6. Shield 网关装饰器 — Tier 0 四道确定性关卡
+# 6. Shield 网关装饰器 — Tier 0 四道确定性关卡（sync + async）
 # ============================================================================
 
 def _bind_args(func: Callable, args: tuple, kwargs: dict) -> dict:
@@ -319,6 +326,96 @@ def _bind_args(func: Callable, args: tuple, kwargs: dict) -> dict:
     return dict(bound.arguments)
 
 
+class _DestructiveDowngraded:
+    """Sentinel：WRITE_DESTRUCTIVE 已被降级为 soft_delete，无需调用原函数。"""
+    def __init__(self, dest: Path, original: Path) -> None:
+        self.dest = dest
+        self.original = original
+
+
+def _run_tier0(
+    func: Callable, args: tuple, kwargs: dict,
+    *,
+    max_session_label: TrustLabel,
+    op_class: OpClass,
+    schema: Optional[Type[BaseModel]],
+    path_field: Optional[str],
+    allowed_roots: Optional[List[Path]],
+    chronicle: Optional[Chronicle],
+):
+    """执行 Tier 0 四道确定性关卡（sync/async 共用）。
+
+    返回 (target_path, snapshot_path, kwargs) 或 _DestructiveDowngraded。
+    失败抛对应 ParallaxSecurityException 子类。
+
+    关键不变量：调用方必须保证"检查通过后立即执行，中间无 await 让出点"，
+    否则会重新引入 async 逃逸窗口。
+    """
+    session = get_session()
+    chron = chronicle or get_chronicle()
+    roots = allowed_roots if allowed_roots is not None else [Path.cwd()]
+
+    logger.info(
+        "--- [Shield] %s | op=%s | max=%s | session=%s ---",
+        func.__name__, op_class.value,
+        max_session_label.name, session.label.name,
+    )
+
+    # --- Tier 0a: Adversarial Validation（修复 #1 位置参数绕过）---
+    if schema is not None:
+        bound = _bind_args(func, args, kwargs)
+        try:
+            validated = schema(**bound)
+            logger.info("[Shield] schema OK: %s", validated)
+        except ValidationError as e:
+            logger.error("[Shield] schema FAIL: %s", e)
+            raise ValidationViolation(
+                f"Intent violates schema: {e}"
+            ) from e
+
+    # --- Tier 0b: Path Containment（修复 #5 路径校验弱）---
+    target_path: Optional[Path] = None
+    if path_field is not None:
+        if path_field not in kwargs:
+            raise PathContainmentViolation(
+                f"path_field '{path_field}' not in kwargs"
+            )
+        target_path = check_path_containment(kwargs[path_field], roots)
+        kwargs[path_field] = str(target_path)
+
+    # --- Tier 0c: IFC Lattice Check（修复 #3 LOCAL_WRITE 漏检 + #4 clearance 装饰性）---
+    if not session.can_execute(max_session_label):
+        logger.error(
+            "[Shield] IFC DENY: session=%s > max=%s",
+            session.label.name, max_session_label.name,
+        )
+        raise IFCViolation(
+            f"Information Flow Control Violation: session tainted to "
+            f"{session.label.name}, but '{func.__name__}' requires "
+            f"<= {max_session_label.name}. Possible indirect prompt "
+            f"injection. Taint history: {session.taint_history}"
+        )
+
+    # --- Tier 0d: Chronicle CoW / 软删除降级（修复 #6 虚假回滚）---
+    snapshot_path: Optional[Path] = None
+    if op_class == OpClass.WRITE_DESTRUCTIVE and target_path is not None:
+        # 破坏性操作强制降级：rm -> mv trash，根本不调用原函数
+        logger.info("[Shield] destructive op downgraded: rm -> mv trash")
+        dest = chron.soft_delete(target_path)
+        return _DestructiveDowngraded(dest, target_path)
+    if op_class == OpClass.WRITE_REVERSIBLE and target_path is not None:
+        snapshot_path = chron.snapshot(target_path)
+    if op_class == OpClass.SIDE_EFFECT_IRREVERSIBLE:
+        # 不可逆操作要求绝对干净的会话
+        if session.label > TrustLabel.PUBLIC:
+            raise IFCViolation(
+                f"Irreversible side-effect requires PUBLIC session, "
+                f"got {session.label.name}"
+            )
+
+    return target_path, snapshot_path, kwargs
+
+
 def parallax_shield(
     max_session_label: TrustLabel = TrustLabel.RESTRICTED,
     op_class: OpClass = OpClass.READ,
@@ -327,102 +424,95 @@ def parallax_shield(
     allowed_roots: Optional[List[Path]] = None,
     chronicle: Optional[Chronicle] = None,
 ):
-    """Parallax Shield 网关装饰器——Tier 0 确定性防御。"""
-    
-    def _run_pre_checks(func, args, kwargs):
-        session = get_session()
-        chron = chronicle or get_chronicle()
-        roots = allowed_roots if allowed_roots is not None else [Path.cwd()]
+    """Parallax Shield 网关装饰器——Tier 0 确定性防御（sync + async）。
 
-        logger.info(
-            "--- [Shield] %s | op=%s | max=%s | session=%s ---",
-            func.__name__, op_class.value,
-            max_session_label.name, session.label.name,
-        )
+    :param max_session_label: 操作能容忍的最高会话污染级别（偏序比较上限）
+        - READ 类操作通常用 RESTRICTED（容忍任何污染）
+        - 破坏性/不可逆操作应用 PUBLIC（仅干净会话可执行）
+    :param op_class: 操作可逆性分类，决定 Chronicle 处理
+    :param schema: Pydantic 模型，对抗性校验（拒绝幻觉/格式越权）
+    :param path_field: kwargs 中代表目标路径的字段名（用于 containment + CoW）
+    :param allowed_roots: 路径白名单根目录；默认 [Path.cwd()]
+    :param chronicle: 自定义 Chronicle 实例；默认全局单例
 
-        # --- Tier 0a: Adversarial Validation ---
-        if schema is not None:
-            bound = _bind_args(func, args, kwargs)
-            try:
-                validated = schema(**bound)
-                logger.info("[Shield] schema OK: %s", validated)
-            except ValidationError as e:
-                logger.error("[Shield] schema FAIL: %s", e)
-                raise ValidationViolation(f"Intent violates schema: {e}") from e
-
-        # --- Tier 0b: Path Containment ---
-        target_path: Optional[Path] = None
-        if path_field is not None:
-            if path_field not in kwargs:
-                raise PathContainmentViolation(f"path_field '{path_field}' not in kwargs")
-            target_path = check_path_containment(kwargs[path_field], roots)
-            kwargs[path_field] = str(target_path)
-
-        # --- Tier 0c: IFC Lattice Check ---
-        if not session.can_execute(max_session_label):
-            logger.error("[Shield] IFC DENY: session=%s > max=%s", session.label.name, max_session_label.name)
-            raise IFCViolation(
-                f"Information Flow Control Violation: session tainted to "
-                f"{session.label.name}, but '{func.__name__}' requires "
-                f"<= {max_session_label.name}. Possible indirect prompt injection."
-                f" Taint history: {session.taint_history}"
-            )
-
-        # --- Tier 0d: Chronicle CoW / 软删除降级 ---
-        snapshot_path: Optional[Path] = None
-        downgrade_result = None
-        
-        if op_class == OpClass.WRITE_DESTRUCTIVE and target_path is not None:
-            logger.info("[Shield] destructive op downgraded: rm -> mv trash")
-            dest = chron.soft_delete(target_path)
-            downgrade_result = {"soft_deleted": str(dest), "original": str(target_path)}
-        elif op_class == OpClass.WRITE_REVERSIBLE and target_path is not None:
-            snapshot_path = chron.snapshot(target_path)
-            
-        if op_class == OpClass.SIDE_EFFECT_IRREVERSIBLE:
-            if session.label > TrustLabel.PUBLIC:
-                raise IFCViolation(f"Irreversible side-effect requires PUBLIC session, got {session.label.name}")
-                
-        return target_path, snapshot_path, chron, downgrade_result, kwargs
-
-    def _run_rollback(e, target_path, snapshot_path, chron):
-        logger.error("[Shield] execution crashed: %s. Rollback engaged.", e)
-        if snapshot_path is not None and target_path is not None:
-            try:
-                chron.restore(snapshot_path, target_path)
-                logger.info("[Shield] rollback OK: %s -> %s", snapshot_path, target_path)
-            except Exception as re:
-                logger.error("[Shield] rollback FAILED: %s", re)
-                raise RollbackFailure(f"Execution failed and rollback failed: {re}") from re
-
+    async 安全性：
+        对 async def 函数，所有 Tier 0 检查在 coroutine 内部（await 时）执行，
+        检查通过后立即 await func，中间无让出点。这消除了"检查时会话干净、
+        执行时会话被污染"的 TOCTOU 式 async 逃逸窗口。
+    """
     def decorator(func: Callable):
         if inspect.iscoroutinefunction(func):
+            # --- async wrapper：检查在 coroutine 内部，无逃逸窗口 ---
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):
-                target_path, snapshot_path, chron, downgrade_result, kwargs = _run_pre_checks(func, args, kwargs)
-                if downgrade_result: return downgrade_result
-                logger.info("[Shield] authorizing execution (async)...")
+                # 所有 Tier 0 检查在这里执行（await 时）
+                # 关键：检查后立即 await func，中间无 await 让出点，
+                # 事件循环不会切换任务，攻击者无法在此间隙 taint 会话
+                decision = _run_tier0(
+                    func, args, kwargs,
+                    max_session_label=max_session_label,
+                    op_class=op_class, schema=schema,
+                    path_field=path_field, allowed_roots=allowed_roots,
+                    chronicle=chronicle,
+                )
+                if isinstance(decision, _DestructiveDowngraded):
+                    return {"soft_deleted": str(decision.dest),
+                            "original": str(decision.original)}
+                target_path, snapshot_path, kwargs = decision
+                chron = chronicle or get_chronicle()
+                logger.info("[Shield] authorizing async execution...")
                 try:
+                    # 立即 await——与上面的检查连续，无让出点
                     result = await func(*args, **kwargs)
-                    logger.info("[Shield] execution OK")
+                    logger.info("[Shield] async execution OK")
                     return result
                 except Exception as e:
-                    _run_rollback(e, target_path, snapshot_path, chron)
+                    logger.error("[Shield] async crashed: %s. Rollback.", e)
+                    if snapshot_path is not None and target_path is not None:
+                        try:
+                            chron.restore(snapshot_path, target_path)
+                            logger.info("[Shield] rollback OK: %s -> %s",
+                                        snapshot_path, target_path)
+                        except Exception as re:
+                            logger.error("[Shield] rollback FAILED: %s", re)
+                            raise RollbackFailure(
+                                f"Execution failed and rollback failed: {re}"
+                            ) from re
                     raise
             return async_wrapper
-        else:
-            @functools.wraps(func)
-            def sync_wrapper(*args, **kwargs):
-                target_path, snapshot_path, chron, downgrade_result, kwargs = _run_pre_checks(func, args, kwargs)
-                if downgrade_result: return downgrade_result
-                logger.info("[Shield] authorizing execution (sync)...")
-                try:
-                    result = func(*args, **kwargs)
-                    logger.info("[Shield] execution OK")
-                    return result
-                except Exception as e:
-                    _run_rollback(e, target_path, snapshot_path, chron)
-                    raise
-            return sync_wrapper
 
+        # --- sync wrapper ---
+        @functools.wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            decision = _run_tier0(
+                func, args, kwargs,
+                max_session_label=max_session_label,
+                op_class=op_class, schema=schema,
+                path_field=path_field, allowed_roots=allowed_roots,
+                chronicle=chronicle,
+            )
+            if isinstance(decision, _DestructiveDowngraded):
+                return {"soft_deleted": str(decision.dest),
+                        "original": str(decision.original)}
+            target_path, snapshot_path, kwargs = decision
+            chron = chronicle or get_chronicle()
+            logger.info("[Shield] authorizing execution...")
+            try:
+                result = func(*args, **kwargs)
+                logger.info("[Shield] execution OK")
+                return result
+            except Exception as e:
+                logger.error("[Shield] execution crashed: %s. Rollback.", e)
+                if snapshot_path is not None and target_path is not None:
+                    try:
+                        chron.restore(snapshot_path, target_path)
+                        logger.info("[Shield] rollback OK: %s -> %s",
+                                    snapshot_path, target_path)
+                    except Exception as re:
+                        logger.error("[Shield] rollback FAILED: %s", re)
+                        raise RollbackFailure(
+                            f"Execution failed and rollback failed: {re}"
+                        ) from re
+                raise
+        return sync_wrapper
     return decorator

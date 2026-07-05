@@ -290,12 +290,20 @@ def test_exception_classification(isolated_session_and_chronicle, tmp_path):
 # ============================================================================
 
 def test_new_session_isolates_taint(isolated_session_and_chronicle):
-    """new_session() 必须创建物理隔离的新会话"""
+    """new_session() 必须重置 taint 状态，物理隔离新旧会话
+
+    v0.2+ 隔离机制：SessionContext 是无状态 facade 单例，对象身份相同，
+    但底层 label/history 存于 contextvars。new_session() 通过 set() 重置
+    当前 context 的绑定，taint 不跟随。这是真正的"逻辑隔离"而非"物理对象隔离"。
+    """
     s1 = get_session()
     s1.taint(TrustLabel.RESTRICTED, "old session")
     assert s1.label == TrustLabel.RESTRICTED
 
-    # 开新会话——之前 taint 不应跟随
+    # 开新会话——taint 必须不跟随
     s2 = new_session()
     assert s2.label == TrustLabel.PUBLIC
-    assert s1 is not s2
+    assert s2.taint_history == []
+    # facade 单例身份相同，但状态已隔离（通过 contextvars）
+    assert s1 is s2  # 同一个 facade 对象
+    assert s1.label == TrustLabel.PUBLIC  # 但 label 已重置
