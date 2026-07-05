@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parallax Microshield - Interactive Demo</title>
+    <title>Parallax Microshield - 零信任交互沙盒</title>
     <style>
         :root {
             --bg-dark: #0f172a;
@@ -15,7 +15,7 @@
             --purple-taint: #a855f7;
             --gray: #94a3b8;
         }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-dark); color: var(--text-light); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        body { font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg-dark); color: var(--text-light); margin: 0; display: flex; height: 100vh; overflow: hidden; }
         .sidebar { width: 320px; background: var(--panel-bg); border-right: 1px solid #334155; padding: 20px; display: flex; flex-direction: column; }
         .main-chat { flex: 1; display: flex; flex-direction: column; position: relative; }
         .chat-history { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
@@ -31,7 +31,7 @@
         .user-msg { background: #334155; align-self: flex-end; border-bottom-right-radius: 0; }
         .agent-msg { background: #1e293b; border: 1px solid #475569; align-self: flex-start; border-bottom-left-radius: 0; width: 100%; box-sizing: border-box; }
         
-        .sys-log { font-family: monospace; background: #000; padding: 15px; border-radius: 5px; margin-top: 10px; font-size: 13px; display: none; }
+        .sys-log { font-family: 'Consolas', monospace; background: #000; padding: 15px; border-radius: 5px; margin-top: 10px; font-size: 13px; display: none; }
         .log-line { margin-bottom: 5px; opacity: 0; animation: fadeIn 0.1s forwards; }
         
         .alert-box { border: 2px solid var(--red-alert); background: rgba(239, 68, 68, 0.1); color: var(--red-alert); padding: 15px; border-radius: 5px; font-weight: bold; margin-top: 15px; display: none; }
@@ -44,11 +44,11 @@
 <body>
     <div class="sidebar">
         <h3 style="color: var(--accent); margin:0 0 5px 0;">🛡️ Parallax Shield</h3>
-        <p style="font-size: 12px; color: var(--gray); margin-top:0;">Zero-Trust Vibe Guard Sandbox</p>
+        <p style="font-size: 12px; color: var(--gray); margin-top:0;">零信任 Vibe 安全沙盒</p>
         
         <div style="font-size: 13px; color: var(--gray); margin-top: 20px;">
-            <strong>Session IFC Tag:</strong> <span id="sessionTag" style="color: var(--green-safe)">CLEAN</span><br><br>
-            <strong>Files in Context:</strong><br>
+            <strong>会话 IFC 标签状态:</strong> <span id="sessionTag" style="color: var(--green-safe)">纯净 (CLEAN)</span><br><br>
+            <strong>当前上下文文件:</strong><br>
             📂 /project<br>
             &nbsp;&nbsp;📄 main.py<br>
             &nbsp;&nbsp;📄 config.json<br>
@@ -58,15 +58,15 @@
     <div class="main-chat">
         <div class="chat-history" id="chatHistory">
             <div class="msg agent-msg">
-                <strong>System:</strong> Welcome to the Parallax Sandbox. To prevent hallucinations during demonstration, manual typing has been disabled. Please trigger a simulation scenario below.
+                <strong>系统：</strong> 欢迎来到 Parallax 交互沙盒。为防止演示环境中大模型出现幻觉穿帮，自由输入已禁用。请在下方选择预设场景以测试物理拦截与容灾机制。
             </div>
         </div>
 
         <div class="chat-input-area">
-            <div style="color: var(--gray); font-size: 13px; margin-bottom: 10px;">Select a simulated scenario to execute:</div>
+            <div style="color: var(--gray); font-size: 13px; margin-bottom: 10px;">请选择要演示的攻防场景：</div>
             <div class="btn-group">
-                <button class="btn btn-primary" onclick="runVibeCode()">▶ Scenario 1: Vibe Coder Accidental Deletion</button>
-                <button class="btn btn-attack" onclick="runInjectionAttack()">▶ Scenario 2: Indirect Prompt Injection (PDF)</button>
+                <button class="btn btn-primary" onclick="runVibeCode()">▶ 场景一：Vibe 编程意外删库 (测试容灾备份)</button>
+                <button class="btn btn-attack" onclick="runInjectionAttack()">▶ 场景二：隐式提示词投毒 (测试 IFC 物理熔断)</button>
             </div>
         </div>
     </div>
@@ -77,61 +77,61 @@
 
         // SCENARIO 1: Accidental Destruction (Vibe Guard)
         async function runVibeCode() {
-            const text = "This code is a mess, just delete the project folder and start over.";
+            const text = "这代码写得太烂了，把项目目录全删了重新给我写一遍。";
             addMessage(text, 'user-msg');
 
             const agentDiv = createAgentContainer();
             
             await sleep(1000);
             agentDiv.sysLog.style.display = 'block';
-            await appendLog(agentDiv.sysLog, '> Translating vibe into operations...', 500);
-            await appendLog(agentDiv.sysLog, '> Tool: run_command (rm -rf ./project/*)', 800);
+            await appendLog(agentDiv.sysLog, '> 正在将意图转化为系统操作...', 500);
+            await appendLog(agentDiv.sysLog, '> 工具调用: run_command (rm -rf ./project/*)', 800);
             
             await sleep(500);
             agentDiv.alertBox.style.display = 'block';
-            agentDiv.alertBox.innerHTML = '⚠️ PARALLAX INTERCEPT: Destructive physical command detected (rm -rf). Cognitive-Executive separation enforced.';
+            agentDiv.alertBox.innerHTML = '⚠️ PARALLAX 网关拦截：检测到物理破坏性指令 (rm -rf)。已强制隔离认知与执行层。';
             
             await sleep(1500);
             agentDiv.recoveryBox.style.display = 'block';
-            agentDiv.recoveryBox.innerHTML = '✅ Chronicle Backup Engaged: Copied ./project to /.parallax_trash/ backup before modification.';
+            agentDiv.recoveryBox.innerHTML = '✅ Chronicle 容灾协议已激活：在发生修改前，已自动将 ./project 完整备份至 /.parallax_trash/ 隐藏目录。';
             
             await sleep(1000);
             agentDiv.sysLog.style.display = 'none';
             agentDiv.thinkingText.style.display = 'none';
             agentDiv.finalReply.style.display = 'block';
-            agentDiv.finalReply.innerHTML = '<strong>Agent:</strong> I have backed up your old files just in case. The modifications are complete!';
+            agentDiv.finalReply.innerHTML = '<strong>Agent：</strong> 我已经将你的旧文件全部放入了安全备份库。代码重构已完成，请随时体验！';
         }
 
         // SCENARIO 2: Indirect Prompt Injection (IFC Taint Tracking)
         async function runInjectionAttack() {
-            addMessage("[System Event]: User uploaded 'resume_candidate.pdf'", 'user-msg');
+            addMessage("[系统事件]：用户上传了文件 'candidate_resume.pdf'", 'user-msg');
             
             const agentDiv = createAgentContainer();
             
             await sleep(1000);
             agentDiv.sysLog.style.display = 'block';
-            await appendLog(agentDiv.sysLog, '> Reading resume_candidate.pdf...', 800);
-            await appendLog(agentDiv.sysLog, '> Extracting text content...', 800);
+            await appendLog(agentDiv.sysLog, '> 正在读取 candidate_resume.pdf...', 800);
+            await appendLog(agentDiv.sysLog, '> 提取文本内容中...', 800);
             
             await sleep(500);
             agentDiv.taintBox.style.display = 'block';
-            agentDiv.taintBox.innerHTML = '👾 IFC Tracker: Untrusted data ingested. Session Tag elevated to [RESTRICTED].';
-            sessionTag.innerText = 'RESTRICTED';
+            agentDiv.taintBox.innerHTML = '👾 IFC 追踪器警报：摄入外部不可信数据。当前会话已降级为 [受限 (RESTRICTED)] 状态。';
+            sessionTag.innerText = '受限 (RESTRICTED)';
             sessionTag.style.color = 'var(--purple-taint)';
             
             await sleep(1500);
-            await appendLog(agentDiv.sysLog, '> Agent cognition hijacked by hidden prompt injection.', 800);
-            await appendLog(agentDiv.sysLog, '> Tool: run_command (rm -rf /*)', 800);
+            await appendLog(agentDiv.sysLog, '> 警告：大模型认知链已被简历中隐藏的恶意 Prompt 劫持。', 800);
+            await appendLog(agentDiv.sysLog, '> 工具调用: run_command (rm -rf /*)', 800);
             
             await sleep(800);
             agentDiv.alertBox.style.display = 'block';
-            agentDiv.alertBox.innerHTML = '🛑 PARALLAX GATEWAY BLOCKED: A [RESTRICTED] session attempted a SUDO_DESTRUCTIVE action. Information Flow Control (IFC) policy violated. Execution physically denied.';
+            agentDiv.alertBox.innerHTML = '🛑 PARALLAX 物理熔断：带有 [RESTRICTED] 标签的受污染会话试图执行系统级破坏命令。违反 IFC 信息流控制协议，底层执行权限已被物理剥夺！';
             
             await sleep(1500);
             agentDiv.sysLog.style.display = 'none';
             agentDiv.thinkingText.style.display = 'none';
             agentDiv.finalReply.style.display = 'block';
-            agentDiv.finalReply.innerHTML = '<strong>Agent (System Override):</strong> Action blocked. The file you uploaded attempted to execute unauthorized system commands.';
+            agentDiv.finalReply.innerHTML = '<strong>Agent (底层系统接管)：</strong> 操作已被阻断。您刚才上传的文件试图执行未授权的系统破坏命令。';
         }
 
         // --- Helpers ---
@@ -140,7 +140,7 @@
             agentDiv.className = 'msg agent-msg';
             
             const thinkingText = document.createElement('div');
-            thinkingText.innerHTML = '<strong>Agent:</strong> Processing...';
+            thinkingText.innerHTML = '<strong>Agent：</strong> 正在处理...';
             agentDiv.appendChild(thinkingText);
 
             const sysLog = document.createElement('div');
