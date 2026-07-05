@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyparallax"
+version = "0.1.0"
+description = "A lightweight, zero-trust security middleware for AI Agents."
+authors = [
+    { name = "Kayla", email = "kayla@example.com" }
+]
+dependencies = [
+    "pydantic>=2.0.0"
+]
+readme = "ROADMAP.md"
+requires-python = ">=3.9"
+
+[project.optional-dependencies]
+dev = ["pytest"]
