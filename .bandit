@@ -1,0 +1,4 @@
+[bandit]
+# B101 (assert_used) 在测试代码中是 pytest 推荐写法，跳过测试目录
+skips = ['B101']
+exclude_dirs = ["tests",".venv","build","dist"]
