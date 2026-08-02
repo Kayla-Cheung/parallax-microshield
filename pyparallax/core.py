@@ -86,6 +86,11 @@ class RollbackFailure(ParallaxSecurityException):
     pass
 
 
+class VolumeThresholdViolation(ParallaxSecurityException):
+    """Tier 0d 失败：目标体积过大，防静默灾难熔断"""
+    pass
+
+
 # ============================================================================
 # 3. 会话上下文 — contextvars 真隔离（label/history 各存独立 ContextVar）
 # ============================================================================
@@ -183,6 +188,13 @@ def _is_project_root(p: Path) -> bool:
     return any((p / m).exists() for m in _PROJECT_ROOT_MARKERS)
 
 
+def _get_path_size(p: Path) -> int:
+    """计算目标路径的总字节数"""
+    if p.is_file():
+        return p.stat().st_size
+    return sum(f.stat().st_size for f in p.rglob('*') if f.is_file())
+
+
 class Chronicle:
     """轻量级容灾存储——写前快照 + 软删除。
 
@@ -249,7 +261,16 @@ class Chronicle:
         if not target.exists():
             raise FileNotFoundError(target)
         ts = self._ts()
-        dest = self.trash / f"{ts}_{target.name}"
+        
+        # 优化点1：跨盘符 O(1) 移动修正 (防 15GB 跨硬盘 I/O 灾难)
+        if target.drive:
+            # 如果在 Windows 且有盘符，将垃圾桶建立在该盘符根目录下
+            trash_root = Path(target.drive + "\\") / ".parallax" / "trash"
+        else:
+            trash_root = self.trash
+            
+        trash_root.mkdir(parents=True, exist_ok=True)
+        dest = trash_root / f"{ts}_{target.name}"
         shutil.move(str(target), str(dest))
         self._audit(f"SOFT_DELETE {target} -> {dest}")
         return dest
@@ -398,6 +419,19 @@ def _run_tier0(
 
     # --- Tier 0d: Chronicle CoW / 软删除降级（修复 #6 虚假回滚）---
     snapshot_path: Optional[Path] = None
+    
+    # 优化点3：大体积目录的阻断握手 (Size Threshold Breaker)
+    if target_path is not None and op_class in (OpClass.WRITE_DESTRUCTIVE, OpClass.WRITE_REVERSIBLE):
+        if target_path.exists():
+            size_mb = _get_path_size(target_path) / (1024 * 1024)
+            if size_mb >= 500:
+                logger.error("[Shield] VOLUME DENY: target size %.2f MB >= 500 MB", size_mb)
+                raise VolumeThresholdViolation(
+                    f"Target size ({size_mb:.2f} MB) exceeds the 500MB threshold. "
+                    "Silent CoW/soft-delete is disabled to prevent catastrophic I/O locking or hidden data loss. "
+                    "You MUST require explicit user approval (Dry-Run Handshake) before proceeding."
+                )
+
     if op_class == OpClass.WRITE_DESTRUCTIVE and target_path is not None:
         # 破坏性操作强制降级：rm -> mv trash，根本不调用原函数
         logger.info("[Shield] destructive op downgraded: rm -> mv trash")
